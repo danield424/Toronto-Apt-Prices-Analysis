@@ -1,0 +1,657 @@
+---
+pdf_document: default
+author: '[Daniel Du, Mimis Chlympatsos]'
+urlcolor: blue
+output: pdf_document
+title: "STA130 Progress Report"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(eval=TRUE, include=TRUE, echo=TRUE, message=TRUE, warning=FALSE)
+```
+
+> Loading the "tidyverse" library and reading the corresponding csv file.
+
+```{r, include=TRUE}
+
+library(tidyverse)
+
+data = read_csv("toronto_apartment_rentals_2018.csv")
+
+glimpse(data)
+
+```
+
+***
+                           ---DATA CLEANING---
+> Converting each price from a string in the form "\$XXXX,XXX.00" to an integer.
+
+> 1. I used 'substr' to "cut off" the first element of the list, the "\$".
+
+> 2. Then I used 'gsub' to remove the commas (since if a string has commas it 
+cannot be converted to a numeric data type), which is equivalent to 
+replacing "," with the empty string "".
+   
+> Moreover, the prices for some observations are below 80 dollars per month, 
+which is clearly something which negatively affect the predictability of 
+our regression model. We can confidently say that we do not want such observations
+to be part of our dataset (most likely they are faulty observations). 
+Thus, we remove Price outliers.
+
+> Finally, only 8/1200 observations have more than 2 bathrooms. Therefore,
+we decided to remove these 8 observations.
+
+> As a note, there are no NA values, so nothing to worry about here.
+pl
+
+```{r, include=TRUE}
+
+data = data %>% mutate(Price = as.double(gsub(',', '', 
+                                              substr(Price, 2, nchar(Price)))))
+
+################# REMOVING PRICE OUTLIERS #################
+prices = data$Price
+quartiles <- quantile(prices, probs=c(.25, .75), na.rm = FALSE)
+IQR <- IQR(prices)
+ 
+lower <- quartiles[1] - 1.5*IQR
+upper <- quartiles[2] + 1.5*IQR
+ 
+data = data %>% filter(Price > lower & Price < upper)
+# data <- subset(data, data$Price > Lower & data$Price < Upper)
+#############################################################
+
+################# REMOVING BATHROOM EXTREMES #################
+# Since only 8/1100 observations had no. of baths > 2, we
+# removed this values.
+data = data %>% filter(Bathroom <= 2)
+#############################################################
+
+# There are no NA values, so nothing to worry about here.
+
+
+data = data %>% filter(Lat < 44.3 & Lat > 43.22 & Long > -100 & Long < -78)
+plot_bedroom = data %>% ggplot(aes(x = Lat, y = Long)) + geom_point(aes(color = Price)) +
+  facet_wrap(data $ Bedroom)
+plot_bathroom = data %>% ggplot(aes(x = Lat, y = Long)) + geom_point(aes(color = Price)) +
+  facet_wrap(data $ Bathroom)
+plot_whole = data %>% ggplot(aes(x = Lat, y = Long)) + geom_point(aes(color = Price))
+
+data2 = data %>% filter(Lat < 43.675 & Lat > 43.63 & Long > -79.45 & Long < -79.35)
+plot_whole2 = data2 %>% ggplot(aes(x = Lat, y = Long)) + geom_point(aes(color = Price))
+plot_bedroom2 = data2 %>% ggplot(aes(x = Lat, y = Long)) + geom_point(aes(color = Price)) +
+  facet_wrap(data2 $ Bedroom)
+plot_bathroom2 = data2 %>% ggplot(aes(x = Lat, y = Long)) + geom_point(aes(color = Price)) +
+  facet_wrap(data2 $ Bathroom)
+
+data3 = data2 %>% filter(Price > 3000)
+plot_whole3 = data3 %>% ggplot(aes(x = Lat, y = Long)) + geom_point(aes(color = Price))
+plot_bedroom3 = data3 %>% ggplot(aes(x = Lat, y = Long)) + geom_point(aes(color = Price)) +
+  facet_wrap(data3 $ Bedroom)
+plot_bathroom3 = data3 %>% ggplot(aes(x = Lat, y = Long)) + geom_point(aes(color = Price)) +
+  facet_wrap(data3 $ Bathroom)
+  
+data4 = data2 %>% filter(Bedroom == 2, Price > 3300)
+plot_bedroom4 = data4 %>% ggplot(aes(x = Lat, y = Long)) + geom_point(aes(color = Price)) +
+  facet_wrap(data4 $ Bedroom)
+
+data5 = data2 %>% filter(Bedroom == 2)
+plot_bedroom5 = data5 %>% ggplot(aes(x = Lat, y = Long)) + geom_point(aes(color = Price)) +
+  facet_wrap(data5 $ Bedroom)
+
+```
+
+***
+
+
+            ---COMPUTING DISTANCE FROM GOOD AREAS---
+> Converting each price from a string in the form "\$XXXX,XXX.00" to an integer.
+
+> 1. Made a plot with LAT on the x-axis and LONG on the y-axis to show the prices
+of the different observations on a "map".
+
+> 2. Split this into cases of 1, 2, and 3 bedrooms.
+
+> 3. We zoomed into various different "high concentration" areas of the plot.
+
+> 4. For each concentration area we arranged the prices (Price) in descending
+order, separately for each number of bedrooms, resulting into three distinct 
+datasets, and kept the top 3 highest-price observations from each dataset.
+
+> 5. Combined these three data sets using 'rbind' and picked the most spread-out
+data points in order to account for as much of the geographical area as possible.
+
+> 6. We did this for each of the (aforementioned) concentration areas.
+
+> 7. We ended up with 7 Lat-Long pairs that we will use to represent expensive
+areas.
+
+```{r, include=TRUE}
+
+plot_whole = data %>% ggplot(aes(x = Lat, y = Long)) + geom_point(aes(color = Price))
+
+# ----- Concentration Area 1 -----
+conc1 = data %>% filter(Lat < 43.675 & Lat > 43.63 & Long > -79.45 & Long < -79.35)
+plot_conc_1 = conc1 %>% ggplot(aes(x = Lat, y = Long)) + geom_point(aes(color = Price))
+
+# displaying this plot
+plot_conc_1
+
+conc1_high_b1 = conc1 %>% filter(Bedroom == 1) %>% arrange(desc(Price)) %>% head(3)
+conc1_high_b2 = conc1 %>% filter(Bedroom == 2) %>% arrange(desc(Price)) %>% head(3)
+conc1_high_b3 = conc1 %>% filter(Bedroom == 3) %>% arrange(desc(Price)) %>% head(3)
+
+conc_1_high_TOTAL = rbind(conc1_high_b1, conc1_high_b2, conc1_high_b3)
+plot_conc1_high_TOTAL = conc_1_high_TOTAL %>% ggplot(aes(x = Lat, y = Long)) + 
+  geom_point(aes(color = Price))
+
+
+# --- Concentration Area 2 ---
+conc2 = data %>% filter(Lat < 43.35 & Lat > 43.3 & Long > -80 & Long < -79.75)
+plot_conc2 = conc2 %>% ggplot(aes(x = Lat, y = Long)) + geom_point(aes(color = Price))
+
+# displaying this plot
+plot_conc2
+
+
+# --- Concentration Area 3 ---
+conc_3 = data %>% filter(Lat < 43.875 & Lat > 43.825 & Long > -79.45 & Long < -79.25)
+plot_conc_3 = conc_3 %>% ggplot(aes(x = Lat, y = Long)) + geom_point(aes(color = Price))
+
+# displaying this plot
+plot_conc_3
+
+
+# A list of 2D vectors, denoting what we consider to be the "good"/"expensive"
+# areas. Each vectors is in the form, (lat, long), where the first element is 
+# the latitude and the second element in the longtitude.
+good_areas = list(c(43.66959, -79.38058), 
+                  c(43.64040, -79.39715),
+                  c(43.64111, -79.41945),
+                  c(43.64864, -79.40119),
+                  c(43.65009, -79.38737),
+                  c(43.31732, -79.80512),
+                  c(43.84274, -79.27066)
+                  )
+```
+
+***
+
+
+            ---DISTANCE TO GOOD AREA - FUNCTION---
+> Creating a function that takes as inputs a latitude number and a longtitude 
+number and returnsthe distance of the apartment (identified by that observation) 
+from one of the good area coordinates in the good_areas list.]
+
+> Due to the neglibible curvature observed in a geographic area as small as 
+the one we are interested in, we are going to compute the distance between 
+each apartment and the designated location the same way you compute the 
+distance between two points in the Cartesian plane; by Pythagoras.
+
+```{r, include=TRUE}
+
+# Helper function that computes the pythagorean distance between points 
+# (lat1, long1) and (lat2, long2).
+DIS = function(lat1, long1, lat2, long2) {
+  return(sqrt((lat2 - lat1)^2 + (long2 - long1)^2))
+}
+
+# Function that returns the smallest distance of the location (lat, long)
+# from any of the locations (of good areas) in the list 'good_areas'.
+MinDist = function(lat, long) {
+  min_so_far = Inf
+  
+  for (loc in good_areas) {
+    distance = DIS(lat, long, loc[1], loc[2])
+    # print(c(lat, long, loc[1], loc[2]))
+    # print(distance)
+    if (length(distance) > 1 | length(min_so_far) > 1) {
+      print('&&&&&&&&&')
+      print(typeof(distance))
+      print(min_so_far)
+    }
+    if (distance < min_so_far) {
+      min_so_far = distance
+    }
+      
+  }
+  
+  return(min_so_far)
+  
+}
+
+MinDistForVectors = function(lat_vec, long_vec) {
+  
+  results = rep(NA, length(lat_vec))
+  
+  for (i in 1:length(lat_vec)) {
+    min_dist = MinDist(lat_vec[i], long_vec[i])
+    results[i] = min_dist
+  }
+  
+  return(results)
+}
+
+
+```
+
+***
+
+
+    ---Constructing the Smallest Distance to a Good Area column/variable---
+> We believe one important variable that affects the value of an apartment 
+is how close it is to a "good"/"expensive" area (e.g. as such areas
+might be associated with lower crime rates, better services, e.t.c.).
+
+> ****************?????????
+After this computation, we found out that some observations were so far away 
+from the centre that did not interest our project at all, so we removed them.
+************?????????
+
+```{r, include=TRUE}
+
+# A vector containing the "distance to a good area" value for every observation
+# in the dataframe data; each element in the vector corresponds to an apartment.
+# This vector will become the new column of 'data' that will represent this
+# distance to a good area.
+dis_to_good_area = MinDistForVectors(data$Lat, data$Long)
+
+# Mutating 'data' to include the new column 'dis_to_good_area'.
+data = data %>% mutate(DTGA = dis_to_good_area)
+
+```
+
+***
+
+ ---Constructing the Distance to Stats Building variable---
+            
+> We believe one important variable that affects the value of an apartment 
+is how close it is to the centre of Toronto, and for this we used the location
+of the Mechanical Engineering building; the one of STA130.
+
+> Due to the neglibible curvature observed in a geographic area as small as 
+the one we are interested in, we are going to compute the distance between 
+each apartment and the designated landmark the same way you compute the 
+distance between two points in the Cartesian plane; by Pythagoras.
+
+> After this computation, we found out that some observations were so far away 
+from the centre that did not interest our project at all, so we removed them.
+
+```{r, include=TRUE}
+
+coords_of_building = c(43.39348, -79.23385)
+
+# the list of latitude values of all our apartments
+latitudes = data$Lat
+# the list of longtitude values of all our apartments
+longtitudes = data$Long
+
+distance_to_building = sqrt(
+  (latitudes - coords_of_building[1])^2 + (longtitudes - coords_of_building[2])^2
+)
+
+data = data %>% mutate(DIS = distance_to_building)
+
+# Some values were very far away from the MC building, so they did not 
+# interest us.
+data = data %>% filter(DIS <5)
+```
+
+***
+           ---Individual Relationship Between Variables and Price---
+
+> Before inluding a variable as an explanatory variable for our multivariate
+linear regression model, we would to determine if that variable actually is
+related to the Price response variable.
+
+> Firstly, we did this by creating three sets of boxplots. Since 'Den', 
+'Bathroom', and 'Bedroom' can all be considered ordinal categorical variables,
+by using 'geom_boxplot' with a categorical variable on the x-axis and a continous
+on the y-axis, we get a different boxplot for each level of the categorical 
+variable. Thus, we can compare, for instance, if -in general- apartments with
+two bedrooms tend to be more expensive than apartments with one bedrooms.
+
+> However, although these boxplots were very insightful, and suggested that 
+a relationship did indeed exist, they are just visualizations. To more
+concretely decide whether a relationship exists (between one of our explanatory
+variables and the response variable), we decided to compute a t-test for the 
+slope. Indeed, for all three aforementioned variables, the p-value was so small
+that we can confidently reject the null hypothesis and conclude (for each
+of these three variables) that the variable is related to Price.
+
+> Our final model is:]
+
+# $$ \hat{y} = \hat{\beta_{1}}x_1 + \hat{\beta_0} + \epsilon_i $$
+            
+```{r, include=TRUE}
+
+#### Boxplots ####
+den_price_BOXPLOT = data %>% ggplot(aes(x = as.factor(Den), y = Price)) + geom_boxplot()
+bed_price_BOXPLOT = data %>% ggplot(aes(x = as.factor(Bedroom), y = Price)) + geom_boxplot()
+bath_price_BOXPLOT = data %>% ggplot(aes(x = as.factor(Bathroom), y = Price)) + geom_boxplot()
+
+den_price_BOXPLOT
+bed_price_BOXPLOT
+bath_price_BOXPLOT
+
+
+model_bedroom = lm(Price ~ Bedroom, data)
+model_bathroom = lm(Price ~ Bathroom, data)
+model_den = lm(Price ~ Den, data)
+model_DIS = lm(Price ~ DIS, data)
+### Assessing the explanation capabilities of the new 'distance_to_building' var.
+model_DTGA = lm(Price ~ DTGA, data)
+
+summary(model_bedroom)
+summary(model_bathroom)
+summary(model_den)
+summary(model_DIS)
+summary(model_DTGA)
+
+
+### OUR MODEL
+# --------------------- JUSTIFICATION OF MODEL --------------------------
+# All the of the explanatory variables (beds, baths, den, DTGA, and DIS)
+# are correlated with the Price variable, as suggested by the boxplots
+# as well as by the negligible p-value resulting from the t-tests (performed for 
+# each of the individual explanatory variables). This justifies their inclusion
+# in our multivariate linear regression model. 
+#
+#
+# We included the interaction term as we believed that the potential relation-
+# ship/interaction between the number of bedrooms and the number of bathrooms
+# for an apartment could have a visible effect on the price.
+# -----------------------------------------------------------------------
+model = lm(Price ~ DIS + DTGA + Bedroom + Bathroom + Den
+          + Bedroom*Bathroom, data)
+
+
+library(modelr)
+
+data = data %>% add_residuals(model)
+data = data %>% mutate(resid = abs(resid))
+
+# Histogram showing the distribution of the residuals caused by our model.
+# The residuals appear to be roughly normally distributed (symmetrical), 
+# unimodal, centred at approximately 0.
+# This shows that we are indeed satisfying the "Linearity" assumption of 
+# linear regression (i.e. that the residuals are normally distributed).
+residual_hist = ggplot(NULL, aes(x = model$residuals)) + geom_histogram(
+                                                        bins = 30, 
+                                                        color = 'black',
+                                                        fill = 'lightblue'
+                                                          )
+
+# Displaying the residuals histogram
+residual_hist
+
+# Indeed, as suggested by the summary table below, the mean is 0
+# and the median is very small, at just about 24.2 dollars. Although
+# the max and the min residuals are quite large (in absolute value terms),
+# this table shows that we are able to predict 75% of the observations' price
+# within a 230 dollar error, since Q3 = 236.35 and Q1 = -207.77 .
+# -----------------------------------------------------
+#     Min.  1st Qu.   Median     Mean  3rd Qu.     Max. 
+# -1431.20  -209.76    26.92     0.00   235.15  1310.91  
+# -----------------------------------------------------
+summary_table = summary(model$residuals)
+
+
+
+## Residuals VS Price (scatterplot)
+#residual_vs_price_scatter = ggplot(data, aes(x = Price, y = data$resid)) + 
+#                                                        geom_point()
+
+# residual_vs_price_scatter = ggplot(data, aes(x = Price, y = data$resid)) + geom_point()
+
+summary_table
+
+summary(model)
+```
+
+***
+       ---Constructing the "ratio" and "total" variable ---
+ 
+> One of the assumptions of a linear regression model is that all the explanatory
+variables are not correlated. However, the 'Bedroom' and the 'Bathroom' 
+variable have a correlation of 0.6, so it might not be wise to use them.
+Instead, we will introduce two new variables in attempt to maintain all the
+information that was offered by 'Bedroom' and 'Bathroom'; a 'total' variable
+(which sums the bathrooms and the bedrooms), and a 'ratio' variable, which
+is a ratio of the number of bedrooms over the number of bathrooms.
+
+```{r, include=TRUE}
+
+data = data %>% mutate(ratio = Bedroom / Bathroom, total = Bedroom + Bathroom)
+
+glimpse(data)
+
+```
+
+
+
+*****************************************************************************
+QUESTION 2
+*****************************************************************************
+
+> Question: Which explanatory variables (from our model) are most important for 
+predicting apartment rental price, and by how much?
+
+> To answer this question, we will use two methods:
+> I. We will calculate the feature effect of each of the explanatory variables 
+    in our model, across all our observations, observations, and create a plot 
+    with boxplots (one per explanatory variable) that shows the distribution of 
+    the effects of each variable (across all observations).
+  II. We will calculate the relative size of the effect of each explanatory
+      variable across all observations. For each explanatory variable x, 
+      we will calculate its total effect on our response variable 
+      by adding the effect of x across all objects and divide this quantity by 
+      the sum of the value of the response variable for each observation.
+      
+
+> Definition: In the context of a linear regression model, the effect size
+of an explanatory variable X for a particular observation W is the proportion
+of the estimated value of the response variable that is attributed
+to the contribution of the explanatory variable X.
+
+
+
+***
+
+ --- I. EFFECT DISTRIBUTIONS ---
+            
+> This is the first part of our second question.
+
+> For each of the explanatory variables included in our linear regression model,
+we will calculate its effect for all observations (that is, for every observation
+in our dataset, we will calculate the its effect/contribution on the prediction 
+of the price). 
+
+> For explanatory variables such as DIS and BATH, the coefficients produced
+by our model are negative (reasonably, because, for instance, the further
+away an apartment is from the centre, the cheaper we may expect it to be). Thus,
+in order to more easily compare them and visualize them with the effect
+distributions of the remaining explanatory variables, we decided to only 
+take into account the magnitude of the effects; that is, we took their 
+absolute value.
+
+> Once we have list of effects of a variable across all observations,
+for all explanatory variables, we will plot the distribution of the effects 
+of each variable using boxplots. We sought to produce a plot that includes
+all the boxplots next to each other so that the effect distributions of the 
+different explanatory variables can easily be compared to each other (however,
+the real potential to compare the effects of the different variables will come
+with the second part of question 2, with "relative effects").
+
+```{r, include=TRUE}
+
+# Extracting from our model a vector containing all the coefficients.
+coeff_vector = model $ coefficients
+
+# Displaying these coefficients
+coeff_vector
+
+# storing into variables all the coefficients of the explanatory variables.
+intercept = coeff_vector[1]
+# WE ARE TAKING THE ABSOLUTE VALUE BECAUSE THE COEFFICIENT IS NEGATIVE.
+DIS_coeff = abs(coeff_vector[2])
+DTGA_coeff = abs(coeff_vector[3])
+BED_coeff = coeff_vector[4]
+BATH_coeff = coeff_vector[5]
+DEN_coeff = coeff_vector[6]
+BED_BATH_coeff = coeff_vector[7]
+
+
+n = nrow(data)
+
+# Initializing vectors that will hold all the effects (i.e. across all
+# observations) for each variable.
+DIS_effects = rep(NA, n)
+DTGA_effects = rep(NA, n)
+BED_effects = rep(NA, n)
+BATH_effects = rep(NA, n)
+DEN_effects = rep(NA, n)
+BED_BATH_effects = rep(NA, n)
+
+# Initializing a new data-frame.
+# The role of this will be to hold all the effects in a particular way:
+#     Each observation has two variables; the effect (a numeric type) and 
+#     a type, which is the "label" of the explanatory variable that this effect 
+#     corresponds to (e.g. "BED").
+#     So we have two columns; "t" for type, and "effect".
+# This configuration of the data-frame makes it easier to work with 'ggplot' 
+# (in particular to create a plot with many boxplots stacked on top of each
+# other, or next to each other, as per our the preference).
+
+df = data_frame(t = character(), effect = numeric())
+
+for (i in 1:n) {
+  # data[i, ] represents the i'th observation from our data-frame
+  record = data[i, ]
+  
+  # storing the variable values of this observation into variables
+  beds = record[[1]]
+  baths = record[[2]]
+  den = record[[3]]
+  dtga = record[[8]]
+  dis = record[[9]]
+  beds_baths = beds * baths
+  
+  # Calculating the coefficient for each of the explanatory variables
+  bed_effect = BED_coeff * beds
+  bath_effect = BATH_coeff * baths
+  den_effect = DEN_coeff * den
+  dtga_effect = DTGA_coeff * dtga
+  dis_effect = DIS_coeff * dis
+  bed_bath_effect = BED_BATH_coeff * beds_baths
+  
+  # SOS: Updating 'df' to include all the new effects we computed, along with
+  # the label of the explanatory variable that they correspond to.
+  # I do this by adding six rows to the data-frame; one for each
+  # effect (each observation -so each iteration- yields 6 more effects,
+  # one fore each explanatory variables).
+  df = df %>% add_row(t = "BED", effect = bed_effect)
+  df = df %>% add_row(t = "BATH", effect = bath_effect)
+  df = df %>% add_row(t = "DEN", effect = den_effect)
+  df = df %>% add_row(t = "DTGA", effect = dtga_effect)
+  df = df %>% add_row(t = "DIS", effect = dis_effect)
+  df = df %>% add_row(t = "BED_BATH", effect = bed_bath_effect)
+  
+}
+
+# Creating a plot that features the boxplots of the effect distributions
+# one on top of the other.
+boxplots = df %>% ggplot(aes(x = effect, y = t)) + geom_boxplot()
+
+# Displaying the stacked boxplots
+boxplots
+
+```
+
+
+
+***
+
+ --- II. RELATIVE EFFECTS ---
+            
+> Although part I of this question allowed us to compare the distributions of 
+of the effects of the different explanatory variables, we now want to calculate
+the following:
+"Across all observations, what proportion of the total effects is attributed
+to each explanatory variable?"
+
+> To compute this "proportion" we will do the following: We will compute 
+the total effect of a particular feature across all observations, and divide
+this quantity by the sum of the effects of all features across all observations
+(note that for a given observation, the sum of the effects of the features
+is equal to the price minus the intercept).
+
+> Thus, we define the "relative effect" of a feature/explanatory variable
+to be the proportion of the total effect of all all features (across all
+records) that this feature is responsible for.
+
+```{r, include=TRUE}
+
+# sum of effects of all features, across all observations
+sum_of_all_effects = sum(df $ effect)
+
+# For each explanatory variable, we calculate the sum of its effects across
+# all observations, and find its "Relative Effect" by dividing by the total
+# sum (of effects of ALL variables).
+# --------------------------------------------------------------------------
+BED_effects = df %>% filter(t == 'BED')
+bed_eff_total = sum(BED_effects $ effect)
+rel_bed_eff = bed_eff_total / sum_of_all_effects
+  
+BATH_effects = df %>% filter(t == 'BATH')
+bath_eff_total = sum(BATH_effects $ effect)
+rel_bath_eff = bath_eff_total / sum_of_all_effects
+
+DEN_effects = df %>% filter(t == 'DEN')
+den_eff_total = sum(DEN_effects $ effect)
+rel_den_eff = den_eff_total / sum_of_all_effects
+
+DIS_effects = df %>% filter(t == 'DIS')
+dis_eff_total = sum(DIS_effects $ effect)
+rel_dis_eff = dis_eff_total / sum_of_all_effects
+
+DTGA_effects = df %>% filter(t == 'DTGA')
+dtga_eff_total = sum(DTGA_effects $ effect)
+rel_dtga_eff = dtga_eff_total / sum_of_all_effects
+
+BED_BATH_effects = df %>% filter(t == 'BED_BATH')
+bed_bath_eff_total = sum(BED_BATH_effects $ effect)
+rel_bed_bath_eff = bed_bath_eff_total / sum_of_all_effects
+# --------------------------------------------------------------------------
+
+
+# Storing all the computed "relative effect" results in a vector.
+relative_effects = c(rel_bed_eff, rel_bath_eff, rel_den_eff, rel_dis_eff, 
+                     rel_dtga_eff, rel_bed_bath_eff)
+
+
+# Putting the relative effects of each feature into a dataframe in order
+# to use them with ggplot.
+eff_df = data_frame(t = c('BED', 'BATH', 'DEN', 'DIS', 'DTGA', 'BED_BATH'), 
+                 relative_effect = relative_effects)
+
+# Displaying this data-frame
+eff_df
+
+
+# A barplot of the relative effect of each explanatory variable.
+# Note: the --stat = "identity"-- argument pass is required
+# to make the barplot accept strings (the variable names) as the x-dimension.
+relative_effect_barplot = ggplot(eff_df, aes(x=t, y=relative_effect)) + 
+    geom_bar(stat = "identity")
+
+# displaying the barplot.
+relative_effect_barplot
+```
+
+
+
+
+
